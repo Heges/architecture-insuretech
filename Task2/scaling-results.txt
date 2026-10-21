@@ -1,0 +1,57 @@
+Проверка динамического масштабирования контейнеров
+Дата: 2026-09-02
+
+Окружение
+- Kubernetes client: v1.34.1
+- Minikube: v1.38.1, Docker driver
+- Locust: 2.46.4
+- metrics-server: включён и доступен
+
+Параметры
+- Deployment: 1 начальная реплика
+- Память контейнера: request 10Mi, limit 30Mi
+- HPA: memory utilization 80%, от 1 до 10 реплик
+- Нагрузка: 1000 пользователей, скорость запуска 50 пользователей/с, длительность 3 минуты
+
+Команда запуска нагрузки
+.venv\Scripts\locust.exe -f Task2\locustfile.py --headless --host http://127.0.0.1:57783 --users 1000 --spawn-rate 50 --run-time 3m --stop-timeout 5 --only-summary
+
+До нагрузки, 20:30:25
+NAME           REFERENCE                 TARGETS           MINPODS   MAXPODS   REPLICAS
+scaletestapp   Deployment/scaletestapp   memory: 19%/80%   1         10        1
+
+NAME                           CPU(cores)   MEMORY(bytes)
+scaletestapp-78875bcbf-rtnvx   1m           1Mi
+
+Во время нагрузки, 20:31:43
+NAME           REFERENCE                 TARGETS            MINPODS   MAXPODS   REPLICAS
+scaletestapp   Deployment/scaletestapp   memory: 111%/80%   1         10        2
+
+NAME           READY   UP-TO-DATE   AVAILABLE
+scaletestapp   2/2     2            2
+
+NAME                           READY   STATUS    RESTARTS
+scaletestapp-78875bcbf-rtnvx   true    Running   0
+scaletestapp-78875bcbf-xkbml   true    Running   0
+
+После распределения нагрузки, 20:32:38
+NAME           REFERENCE                 TARGETS           MINPODS   MAXPODS   REPLICAS
+scaletestapp   Deployment/scaletestapp   memory: 72%/80%   1         10        2
+
+NAME                           CPU(cores)   MEMORY(bytes)
+scaletestapp-78875bcbf-rtnvx   14m          12Mi
+scaletestapp-78875bcbf-xkbml   1m           1Mi
+
+Событие HPA
+Normal  SuccessfulRescale  New size: 2; reason: memory resource utilization (percentage of request) above target
+
+Итог Locust
+- Всего запросов: 35736
+- Успешных запросов: 14871
+- Ошибок ConnectionRefused: 20865
+- Средняя интенсивность: 196.68 запроса/с
+
+Ошибки ConnectionRefused возникали на локальном туннеле Minikube под высокой нагрузкой. В Kubernetes обе реплики оставались Running и имели 0 перезапусков.
+
+Результат
+При превышении порога памяти HPA автоматически увеличил количество реплик приложения с 1 до 2. После добавления второй реплики средняя утилизация памяти снизилась со 111% до 72%.
